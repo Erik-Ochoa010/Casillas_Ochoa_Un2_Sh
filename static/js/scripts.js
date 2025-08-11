@@ -1,93 +1,136 @@
 $(document).ready(function () {
-    // Manejo de la carga de archivo
-    $('#uploadForm').on('submit', function (e) {
-        e.preventDefault();  // Evitar la recarga de página
 
-        const fileInput = $('#fileInput')[0].files[0];  // Obtener el archivo seleccionado
-        if (!fileInput) {
-            alert('Por favor selecciona un archivo.');  // Verificar que se haya seleccionado un archivo
-            return;
+  let paquetes = [];
+
+  // Función asíncrona para leer archivo Excel usando FileReader
+  // => Aquí usas Promesas + FileReader, que es asíncrono
+  async function leerArchivoExcel(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const paquetes = XLSX.utils.sheet_to_json(sheet);
+          resolve(paquetes); // proceso asíncrono resuelto
+        } catch (error) {
+          reject(error);
         }
-
-        const formData = new FormData();  // Crear FormData para el archivo
-        formData.append('file', fileInput);  // Agregar el archivo al FormData
-
-        $('#tableContainer').html('<p class="text-center text-secondary">Cargando archivo...</p>');  // Mensaje de carga
-
-        // Enviar el archivo al servidor usando AJAX
-        $.ajax({
-            url: '/upload',
-            method: 'POST',
-            data: formData,
-            contentType: false,
-            processData: false,
-            success: function (response) {
-                if (response.success) {
-                    $('#tableContainer').html(`
-                        <h3 class="mt-4">Tabla Original</h3>
-                        <div class="table-container">${response.table_html}</div>
-                    `);
-                    $('#filterButton').show();  // Mostrar el botón de filtrado después de cargar el archivo
-                    $('#totalPackages').text(response.totalPackages);
-                } else {
-                    alert(response.message);
-                }
-            },
-            error: function () {
-                alert('Error al cargar el archivo.');
-            }
-        });
+      };
+      reader.onerror = () => reject("Error leyendo archivo");
+      reader.readAsArrayBuffer(file);
     });
+  }
 
-    // Filtrar por peso (se ejecuta después de que se haya cargado el archivo)
-    $('#filterButton').on('click', function () {
-        const weight = $('#filterWeight').val();
-        if (!weight || isNaN(weight)) {
-            alert('Por favor ingresa un peso válido.');
-            return;
-        }
+  // Evento de submit con async/await (asíncrono)
+  $('#uploadForm').on('submit', async function (e) {
+    e.preventDefault();
+    const fileInput = $('#fileInput')[0].files[0];
+    if (!fileInput) {
+      alert('Por favor selecciona un archivo.');
+      return;
+    }
+    try {
+      paquetes = await leerArchivoExcel(fileInput);  // función asíncrona
+      mostrarTabla(paquetes);                        // función síncrona
+      $('#totalPackages').text(paquetes.length);
+      $('#filterTimestamp').text("N/A");
+      $('#filterButton').show();
+      $('#filterWeight').val("");
+    } catch (error) {
+      alert("Error al procesar el archivo: " + error);
+    }
+  });
 
-        $('#tableContainer').html('<p class="text-center text-secondary">Filtrando registros...</p>');
+  // Muestra la tabla en el DOM
+  // Esto es síncrono (renderiza al instante)
+  function mostrarTabla(data) {
+    if (!data.length) {
+      $('#tableContainer').html("<p class='text-center text-muted'>No hay datos para mostrar.</p>");
+      return;
+    }
+    let html = `
+      <table class="table table-striped table-bordered" style="display:none;">
+        <thead><tr>
+          ${Object.keys(data[0]).map(key => `<th>${key}</th>`).join('')}
+        </tr></thead>
+        <tbody>
+          ${data.map(row => `
+            <tr>
+              ${Object.values(row).map(val => `<td>${val}</td>`).join('')}
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+    $('#tableContainer').html(html);
 
-        $.ajax({
-            url: '/filter',
-            method: 'GET',
-            data: { weight: weight },
-            success: function (response) {
-                if (response.success) {
-                    $('#tableContainer').html(`
-                        <h3 class="mt-4 text-success">Registros Filtrados (Peso > ${weight} Kg)</h3>
-                        <div class="table-container">${response.filtered_table_html}</div>
-                    `);
-                    $('#totalPackages').text(response.filteredPackages);
-                    $('#filterTimestamp').text(new Date().toLocaleString());
-                } else {
-                    alert(response.message);
-                }
-            },
-            error: function () {
-                alert('Error al filtrar los registros.');
-            }
-        });
+    // Animación con fadeIn (animaciones/transiciones)
+    $('#tableContainer table').fadeIn(400);
+  }
+
+  // Evento de click (evento de mouse) en botón filtrar
+  $('#filterButton').on('click', function () {
+    const weight = parseFloat($('#filterWeight').val());
+    if (isNaN(weight)) {
+      alert('Por favor ingresa un peso válido.');
+      return;
+    }
+    // filtrado con funciones síncronas
+    const filtrados = paquetes.filter(p => {
+      const peso = parseFloat(p['Peso Kg']) || 0;
+      return peso > weight;
     });
+    mostrarTabla(filtrados);
+    $('#totalPackages').text(filtrados.length);
+    $('#filterTimestamp').text(new Date().toLocaleString());
 
-    // Descargar en Excel
-    $('#downloadExcel').on('click', function () {
-        const table = $('#tableContainer').find('table')[0];
-        const wb = XLSX.utils.table_to_book(table, { sheet: "Paquetes" });
-        XLSX.writeFile(wb, 'Paquetes.xlsx');
-    });
+    // Animación al hacer click (transición)
+    $(this).animate({ opacity: 0.6 }, 100).animate({ opacity: 1 }, 100);
+  });
 
-    // Descargar en PDF
-    $('#downloadPDF').on('click', function () {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        doc.html($('#tableContainer').find('table')[0], {
-            callback: function (doc) {
-                doc.save('Paquetes.pdf');
-            },
-            margin: [20, 20, 20, 20],
-            autoPaging: true
-        });
+  // Evento doble click (evento de mouse extra)
+  $('#filterButton').on('dblclick', function () {
+    alert("Has hecho doble click en el botón Filtrar");
+  });
+
+  // Evento de mouseenter/mouseleave en las filas de la tabla
+  // => cumplen requisito de eventos de mouse
+  $(document).on('mouseenter', 'tbody tr', function () {
+    $(this).css('background-color', '#dbe9ff');
+  });
+  $(document).on('mouseleave', 'tbody tr', function () {
+    $(this).css('background-color', '');
+  });
+
+  // Evento de click para descargar Excel
+  // (evento de mouse)
+  $('#downloadExcel').on('click', function () {
+    const table = $('#tableContainer').find('table')[0];
+    if (!table) {
+      alert("No hay tabla para exportar");
+      return;
+    }
+    const wb = XLSX.utils.table_to_book(table, { sheet: "Paquetes" });
+    XLSX.writeFile(wb, 'Paquetes.xlsx');
+  });
+
+  // Evento de click para descargar PDF
+  $('#downloadPDF').on('click', function () {
+    const table = $('#tableContainer').find('table')[0];
+    if (!table) {
+      alert("No hay tabla para exportar");
+      return;
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.html(table, {
+      callback: function (doc) {
+        doc.save('Paquetes.pdf');
+      },
+      margin: [20, 20, 20, 20],
+      autoPaging: true
     });
+  });
+
 });
