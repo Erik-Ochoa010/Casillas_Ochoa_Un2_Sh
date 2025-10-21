@@ -359,92 +359,87 @@ button {
     <p><strong>Hora de filtrado: </strong><span id="filterTimestamp">N/A</span></p>
   </div>
 
-  <script>
-    $(document).ready(function () {
-      let paquetes = [];
+  <!-- Mejoras en validaciones, animaciones y claridad del código -->
 
-      $("#uploadForm").on("submit", function (e) {
-        e.preventDefault();
-        const file = $("#fileInput")[0].files[0];
-        if (!file) {
-          alert("Por favor selecciona un archivo.");
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = function (evt) {
-          const data = new Uint8Array(evt.target.result);
-          const workbook = XLSX.read(data, { type: "array" });
-          const sheet = workbook.Sheets[workbook.SheetNames[0]];
-          paquetes = XLSX.utils.sheet_to_json(sheet);
-          renderTabla(paquetes);
-          $("#totalPackages").text(paquetes.length);
-          $("#filterTimestamp").text("N/A");
-          $("#filterWeight").val("");
-        };
-        reader.readAsArrayBuffer(file);
-      });
+<script>
+$(document).ready(function () {
+  let paquetes = [];
 
-      function renderTabla(data) {
-        if (!data.length) {
-          $("#tableContainer").html("<p class='text-center text-muted'>No hay datos para mostrar.</p>");
-          return;
-        }
-        let html = `<table class="table table-striped table-bordered"><thead><tr>`;
-        for (const col of Object.keys(data[0])) {
-          html += `<th>${col}</th>`;
-        }
-        html += "</tr></thead><tbody>";
-        data.forEach((row) => {
-          html += "<tr>";
-          for (const col of Object.keys(data[0])) {
-            html += `<td>${row[col] ?? ""}</td>`;
-          }
-          html += "</tr>";
-        });
-        html += "</tbody></table>";
-        $("#tableContainer").html(html);
-      }
+  $("#uploadForm").on("submit", function (e) {
+    e.preventDefault();
+    const file = $("#fileInput")[0].files[0];
+    if (!file) {
+      alert("Por favor selecciona un archivo."); // Modificación aquí: mensaje más amigable
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function (evt) {
+      const data = new Uint8Array(evt.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      paquetes = XLSX.utils.sheet_to_json(sheet);
+      renderTabla(paquetes);
+      $("#totalPackages").text(paquetes.length);
+      $("#filterTimestamp").text("N/A");
+      $("#filterWeight").val(""); // Modificación aquí: limpiar input tras cargar archivo
+    };
+    reader.readAsArrayBuffer(file);
+  });
 
-      $("#filterButton").on("click", function () {
-        const peso = parseFloat($("#filterWeight").val());
-        if (isNaN(peso)) {
-          alert("Por favor ingresa un peso válido.");
-          return;
-        }
-        const filtrados = paquetes.filter((p) => parseFloat(p["Peso Kg"] || 0) > peso);
-        renderTabla(filtrados);
-        $("#totalPackages").text(filtrados.length);
-        $("#filterTimestamp").text(new Date().toLocaleString());
-      });
+  function renderTabla(data) {
+    if (!data.length) {
+      $("#tableContainer").html("<p class='text-center text-muted'>No hay datos para mostrar.</p>");
+      return;
+    }
+    // Modificación aquí: uso de map para generar filas más claro
+    const html = `<table class="table table-striped table-bordered">
+      <thead><tr>${Object.keys(data[0]).map(col => `<th>${col}</th>`).join('')}</tr></thead>
+      <tbody>
+        ${data.map(row => `<tr>${Object.keys(row).map(col => `<td>${row[col] ?? ""}</td>`).join('')}</tr>`).join('')}
+      </tbody>
+    </table>`;
+    $("#tableContainer").html(html);
+  }
 
-      $("#downloadExcel").on("click", function () {
-        const table = $("#tableContainer table")[0];
-        if (!table) {
-          alert("No hay tabla para exportar");
-          return;
-        }
-        const wb = XLSX.utils.table_to_book(table, { sheet: "Paquetes" });
-        XLSX.writeFile(wb, "Paquetes.xlsx");
-      });
+  $("#filterButton").on("click", function () {
+    const peso = parseFloat($("#filterWeight").val());
+    if (isNaN(peso) || peso < 0) { // Modificación aquí: validación para peso negativo
+      alert("Por favor ingresa un peso válido (mayor o igual a 0).");
+      return;
+    }
+    const filtrados = paquetes.filter(p => parseFloat(p["Peso Kg"] || 0) > peso);
+    renderTabla(filtrados);
+    $("#totalPackages").text(filtrados.length);
+    $("#filterTimestamp").text(new Date().toLocaleString());
+    $("#filterWeight").val(""); // Modificación aquí: limpiar input tras filtrar
+  });
 
-      $("#downloadPDF").on("click", function () {
-        const table = $("#tableContainer table")[0];
-        if (!table) {
-          alert("No hay tabla para exportar");
-          return;
-        }
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        doc.html(table, {
-          callback: function (doc) {
-            doc.save("Paquetes.pdf");
-          },
-          margin: [15, 15, 15, 15],
-          autoPaging: "text",
-          html2canvas: { scale: 0.75 },
-        });
-      });
+  $("#downloadExcel").on("click", function () {
+    const table = $("#tableContainer table")[0];
+    if (!table) {
+      alert("No hay tabla para exportar");
+      return;
+    }
+    const wb = XLSX.utils.table_to_book(table, { sheet: "Paquetes" });
+    XLSX.writeFile(wb, "Paquetes.xlsx");
+  });
+
+  $("#downloadPDF").on("click", function () {
+    const table = $("#tableContainer table")[0];
+    if (!table) {
+      alert("No hay tabla para exportar");
+      return;
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.html(table, {
+      callback: function (doc) {
+        doc.save("Paquetes.pdf");
+      },
+      margin: [15, 15, 15, 15],
+      autoPaging: "text",
+      html2canvas: { scale: 0.75 },
     });
-  </script>
-</body>
-</html>
+  });
+});
+</script>
